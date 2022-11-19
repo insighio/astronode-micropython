@@ -626,4 +626,6 @@ class ASTRONODE:
     def clear_reset_event(self):
         pass
 
-    # void dummy_cmd(self):
+    def is_alive(self):
+        (status, _) = self.send_cmd(0x00, 0x00)
+        return status == ANS_STATUS_OPCODE_NOT_VALID
