@@ -171,9 +171,7 @@ ASTROCAST_REF_UNIX_TIME = 1514764800 # 2018-01-01T00:00:00Z (= Astrocast time)
 class ASTRONODE:
     def __init__(self, modem_tx=None, modem_rx=None):
         self._serialPort = None
-        self._debugSerial = None
-        self._printDebug = False     # Flag to print the serial commands we are sending to the Serial port for debug
-        self._printFullDebug = False # Flag to print full debug messages. Useful for UART debugging
+        self._debug_on = False
 
         if modem_tx is not None and modem_rx is not None:
             self._serialPort = UART(1, 9600, tx=modem_tx, rx=modem_rx)
@@ -252,11 +250,11 @@ class ASTRONODE:
     def encode_send_request(self, opcode, data=""):
         msg = "%0.2X" % opcode
         msg += data
-        print("data to crc: {}".format(msg))
         crc = self._generate_crc(msg)
         msg += crc
         msg = ubinascii.hexlify(msg.encode())
-        print(">: {}".format(msg))
+        if self._debug_on:
+            print(">: {}".format(msg))
         msg = self.text_to_hex(STX) + msg.decode()
         msg += self.text_to_hex(ETX)
         msg = ubinascii.unhexlify(msg)
@@ -293,7 +291,10 @@ class ASTRONODE:
                     break
                 continue
             utime.sleep_ms(1)
-        print("<: {}".format(message_buffer))
+
+        if self._debug_on:
+            print("<: {}".format(message_buffer))
+
         if len(message_buffer) > 6: # At least STX (1), ETX (1), CRC (4)
             message = message_buffer[1:-5].decode() # [STX (1), - (CRC (4) + ETX (1))]
             cmd_crc_check = message_buffer[-5:-1].decode()
@@ -319,7 +320,8 @@ class ASTRONODE:
         else:
             ret_status = ANS_STATUS_TIMEOUT
 
-        print("ret_status: {}, opcode: {}, data: {}".format(hex(ret_status), hex(opcode) if opcode is not None else opcode, data))
+        if self._debug_on:
+            print("ret_status: {}, opcode: {}, data: {}".format(hex(ret_status), hex(opcode) if opcode is not None else opcode, data))
         return (ret_status, opcode, data)
 
     def send_cmd(self, reg_req, reg_ans, params=""):
@@ -430,9 +432,11 @@ class ASTRONODE:
             self.peak_rssi_last_contact = 0
             self.time_peak_rssi_last_contact = 0
 
-    # def enableDebugging(Stream &debugPort,
-    #                     bool printFullDebug):
-    # def disableDebugging(self):
+    def enableDebugging(self):
+        self._debug_on = True
+
+    def disableDebugging(self):
+        self._debug_on = False
 
     def configuration_write(self, with_pl_ack, with_geoloc, with_ephemeris, with_deep_sleep, with_ack_event_pin_mask, with_reset_event_pin_mask):
         # Set parameters
