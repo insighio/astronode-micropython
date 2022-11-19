@@ -513,7 +513,7 @@ class ASTRONODE:
         if status == ANS_STATUS_DATA_RECEIVED:
             guid = data
             status = ANS_STATUS_SUCCESS
-        return (status, guid.decode() if guid is not None else None)
+        return (status, guid.decode('ascii').strip().strip('\x00') if guid is not None else None)
 
     def serial_number_read(self):
         sn = None
@@ -521,7 +521,7 @@ class ASTRONODE:
         if status == ANS_STATUS_DATA_RECEIVED:
             sn = data
             status = ANS_STATUS_SUCCESS
-        return (status, sn.decode() if sn is not None else None)
+        return (status, sn.decode('ascii').strip().strip('\x00') if sn is not None else None)
 
     def product_number_read(self):
         pn = None
@@ -529,7 +529,7 @@ class ASTRONODE:
         if status == ANS_STATUS_DATA_RECEIVED:
             pn = data
             status = ANS_STATUS_SUCCESS
-        return (status, pn.decode() if pn is not None else None)
+        return (status, pn.decode('ascii').strip().strip('\x00') if pn is not None else None)
 
     def rtc_read(self):
         time = None
