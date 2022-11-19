@@ -1,19 +1,3 @@
-'''
-******************************************************************************************
- * File:        astronode.py
- * Author:      Nikolaos Ftylitakis
- * Compagny:    insigh.io PC
- * Website:     https:#www.insigh.io/
- * E-mail:      nikos.ftylitakis@insigh.io
- ******************************************************************************************
-****************************************************************************************
- * Created on: 			17.11.2022
- * Supported Hardware: ESP32 + micropython
- *
- * Firmware Version 1.0
- ****************************************************************************************
-'''
-
 import ubinascii
 from machine import UART
 import random
@@ -190,8 +174,6 @@ class ASTRONODE:
         self._debugSerial = None
         self._printDebug = False     # Flag to print the serial commands we are sending to the Serial port for debug
         self._printFullDebug = False # Flag to print full debug messages. Useful for UART debugging
-        # self.com_buf_astronode = [None] * (COMMAND_MAX_SIZE + 2) # max cmd size + 2 bytes CRC
-        # self.com_buf_astronode_hex = [None] * (2 * (COMMAND_MAX_SIZE + 2) + 2) # max cmd size + 2 bytes CRC -> double for trasport layer + add 2 escape characters
 
         if modem_tx is not None and modem_rx is not None:
             self._serialPort = UART(1, 9600, tx=modem_tx, rx=modem_rx)
@@ -472,8 +454,8 @@ class ASTRONODE:
         return ret_val
 
     def wifi_configuration_write(wland_ssid, wland_key, auth_token):
-        configuration_wifi = binascii.hexlify(wland_ssid).ljust(66, b'0') + \
-                     binascii.hexlify(wland_key).ljust(128, b'0') + binascii.hexlify(auth_token).ljust(194, b'0')
+        configuration_wifi = ubinascii.hexlify(wland_ssid).ljust(66, b'0') + \
+                     ubinascii.hexlify(wland_key).ljust(128, b'0') + ubinascii.hexlify(auth_token).ljust(194, b'0')
          configuration_wifi = configuration_wifi.decode("utf-8")
 
         reg = _WIF_WR
