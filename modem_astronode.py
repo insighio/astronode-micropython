@@ -270,7 +270,7 @@ class ASTRONODE:
 
     def receive_decode_answer(self):
         message_buffer = b''
-        ret_val = ANS_STATUS_NONE
+        ret_status = ANS_STATUS_NONE
         opcode = None
         data = None
 
@@ -305,7 +305,7 @@ class ASTRONODE:
             if cmd_crc == cmd_crc_check:
                 if com_buf_astronode[0] == ERR_RA:
                     # Process error code from terminal
-                    ret_val = ((com_buf_astronode[2] << 8) + com_buf_astronode[1])
+                    ret_status = ((com_buf_astronode[2] << 8) + com_buf_astronode[1])
                 else:
                     # Extract parameters
                     data = com_buf_astronode[1:]
@@ -313,31 +313,71 @@ class ASTRONODE:
                     # Return reply from terminal
                     opcode = com_buf_astronode[0]
 
-                    ret_val = ANS_STATUS_DATA_RECEIVED
+                    ret_status = ANS_STATUS_DATA_RECEIVED
             else:
-                ret_val = ANS_STATUS_CRC_NOT_VALID
+                ret_status = ANS_STATUS_CRC_NOT_VALID
         else:
-            ret_val = ANS_STATUS_TIMEOUT
+            ret_status = ANS_STATUS_TIMEOUT
 
-        print("ret_val: {}, opcode: {}, data: {}".format(hex(ret_val), hex(opcode) if opcode is not None else opcode, data))
-        return (ret_val, opcode, data)
+        print("ret_status: {}, opcode: {}, data: {}".format(hex(ret_status), hex(opcode) if opcode is not None else opcode, data))
+        return (ret_status, opcode, data)
 
-    # def byte_array_to_hex_array(uint8_t *in,
-    #                             uint8_t length,
-    #                             uint8_t *out):
-    # void hex_array_to_byte_array(uint8_t *in,
-    #                             uint8_t length,
-    #                             uint8_t *out):
-    # uint8_t nibble_to_hex(uint8_t nibble):
-    # uint8_t hex_to_nibble(uint8_t hex):
-    # uint16_t crc_compute(uint8_t *data,
-    #                     uint16_t data_length,
-    #                     uint16_t init):
-    # void print_array_to_hex(uint8_t data[],
-    #                         size_t length):
+    def send_cmd(self, reg_req, reg_ans, params=""):
+        ret_data = None
+        ret_status = self.encode_send_request(reg_req, params)
+        if ret_status == ANS_STATUS_DATA_SENT:
+            (ret_status, opcode, data) = self.receive_decode_answer()
+            if ret_status == ANS_STATUS_DATA_RECEIVED and opcode == reg_ans:
+                ret_data = data
+        return (ret_status, ret_data)
 
     def get_error_code_string(code):
-        pass
+        if code == ANS_STATUS_CRC_NOT_VALID:
+            return "Discrepancy between provided CRC and expected CRC.\n"
+        elif code == ANS_STATUS_LENGTH_NOT_VALID:
+            return "Message exceeds the maximum length for a frame.\n"
+        elif code == ANS_STATUS_OPCODE_NOT_VALID:
+            return "Invalid Operation Code used.\n"
+        elif code == ANS_STATUS_ARG_NOT_VALID:
+            return "Invalid argument used.\n"
+        elif code == ANS_STATUS_FLASH_WRITING_FAILED:
+            return "Failed to write to the flash.\n"
+        elif code == ANS_STATUS_DEVICE_BUSY:
+            return "Device is busy.\n"
+        elif code == ANS_STATUS_FORMAT_NOT_VALID:
+            return "At least one of the fields (SSID, password, token) is not composed of exclusively printable standard ASCII characters (0x20 to 0x7E).\n"
+        elif code == ANS_STATUS_PERIOD_INVALID:
+            return "The Satellite Search Config period enumeration value is not valid.\n"
+        elif code == ANS_STATUS_BUFFER_FULL:
+            return "Failed to queue the payload because the sending queue is already full.\n"
+        elif code == ANS_STATUS_DUPLICATE_ID:
+            return "Failed to queue the payload because the Payload ID provided by the asset is already in use in the terminal queue.\n"
+        elif code == ANS_STATUS_BUFFER_EMPTY:
+            return "Failed to dequeue a payload from the buffer because the buffer is empty.\n"
+        elif code == ANS_STATUS_INVALID_POS:
+            return "Invalid position.\n"
+        elif code == ANS_STATUS_NO_ACK:
+            return "No satellite acknowledgement available for any payload.\n"
+        elif code == ANS_STATUS_NO_ACK_CLEAR:
+            return "No payload ack to clear, or it was already cleared.\n"
+        elif code == ANS_STATUS_NO_COMMAND:
+            return "No command is available.\n"
+        elif code == ANS_STATUS_NO_COMMAND_CLEAR:
+            return "No command to clear, or it was already cleared.\n"
+        elif code == ANS_STATUS_MAX_TX_REACHED:
+            return "Failed to test Tx due to the maximum number of transmissions being reached.\n"
+        elif code == ANS_STATUS_TIMEOUT:
+            return "Failed to receive data from astronode before timeout.\n"
+        elif code == ANS_STATUS_HW_ERR:
+            return "Failed to send data to the terminal.\n"
+        elif code == ANS_STATUS_SUCCESS:
+            return ""
+        elif code == ANS_STATUS_DATA_SENT:
+            return ""
+        elif code == ANS_STATUS_DATA_RECEIVED:
+            return ""
+        else:
+            return "Unknown error code.\n"
 
     class ASTRONODE_CONFIG:
         def __init__(self):
@@ -411,60 +451,48 @@ class ASTRONODE:
         if with_reset_event_pin_mask:
             param_w[2] |= 1 << 1
 
-        reg = CFG_WR
-        ret_val = self.encode_send_request(reg, param_w)
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer(reg)
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == CFG_WA:
-                ret_val = ANS_STATUS_SUCCESS
-        return ret_val
+        (status, _) = self.send_cmd(CFG_WR, CFG_WA, param_w)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def configuration_read(self):
-        #Send request
-        reg = CFG_RR
         config = None
-        ret_val = self.encode_send_request(reg)
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer()
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == CFG_RA:
-                config = ASTRONODE.ASTRONODE_CONFIG()
-                config.product_id = data[0]
-                config.hardware_rev = data[1]
-                config.firmware_maj_ver = data[2]
-                config.firmware_min_ver = data[3]
-                config.firmware_rev = data[4]
-                config.with_pl_ack = (data[5] & (1 << 0))
-                config.with_geoloc = (data[5] & (1 << 1))
-                config.with_ephemeris = (data[5] & (1 << 2))
-                config.with_deep_sleep_en = (data[5] & (1 << 3))
-                config.with_msg_ack_pin_en = (data[7] & (1 << 0))
-                config.with_msg_reset_pin_en = (data[7] & (1 << 1))
+        #Send request
+        (status, data) = self.send_cmd(CFG_RR, CFG_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            config = ASTRONODE.ASTRONODE_CONFIG()
+            config.product_id = data[0]
+            config.hardware_rev = data[1]
+            config.firmware_maj_ver = data[2]
+            config.firmware_min_ver = data[3]
+            config.firmware_rev = data[4]
+            config.with_pl_ack = (data[5] & (1 << 0))
+            config.with_geoloc = (data[5] & (1 << 1))
+            config.with_ephemeris = (data[5] & (1 << 2))
+            config.with_deep_sleep_en = (data[5] & (1 << 3))
+            config.with_msg_ack_pin_en = (data[7] & (1 << 0))
+            config.with_msg_reset_pin_en = (data[7] & (1 << 1))
 
-                ret_val = ANS_STATUS_SUCCESS
-        return (ret_val, config)
+            ret_status = ANS_STATUS_SUCCESS
+        return (ret_status, config)
 
     def configuration_save(self):
         # Send request
-        reg = CFG_SR
-        ret_val = self.encode_send_request(reg)
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer()
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == CFG_SA:
-                ret_val = ANS_STATUS_SUCCESS
-        return ret_val
+        (status, _) = self.send_cmd(CFG_SR, CFG_SA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def wifi_configuration_write(wland_ssid, wland_key, auth_token):
         configuration_wifi = ubinascii.hexlify(wland_ssid).ljust(66, b'0') + \
                      ubinascii.hexlify(wland_key).ljust(128, b'0') + ubinascii.hexlify(auth_token).ljust(194, b'0')
-         configuration_wifi = configuration_wifi.decode("utf-8")
+        configuration_wifi = configuration_wifi.decode("utf-8")
 
-        reg = _WIF_WR
-        ret_val = self.encode_send_request(reg, configuration_wifi)
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer(reg)
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == _WIF_WA:
-                ret_val = ANS_STATUS_SUCCESS
-        return ret_val
+        (status, _) = self.send_cmd(WIF_WR, WIF_WA, configuration_wifi)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def satellite_search_config_write(search_period, force_search):
         pass
@@ -474,62 +502,46 @@ class ASTRONODE:
 
     def factory_reset(self):
         # Send request
-        reg = CFG_FR
-        ret_val = self.encode_send_request(reg)
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer()
-            if ret_val == ANS_STATUS_DATA_RECEIVED and reg == CFG_FA:
-                ret_val = ANS_STATUS_SUCCESS
-        return ret_val
+        (status, _) = self.send_cmd(CFG_FR, CFG_FA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def guid_read(self):
-        reg = MGI_RR
         guid = None
-        ret_val = self.encode_send_request(reg)
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer()
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == MGI_RA:
-                guid = data
-                ret_val = ANS_STATUS_SUCCESS
-        return (ret_val, guid.decode())
+        (status, data) = self.send_cmd(MGI_RR, MGI_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            guid = data
+            status = ANS_STATUS_SUCCESS
+        return (status, guid.decode() if guid is not None else None)
 
     def serial_number_read(self):
-        reg = MSN_RR
         sn = None
-        ret_val = self.encode_send_request(reg)
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer()
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == MSN_RA:
-                sn = data
-                ret_val = ANS_STATUS_SUCCESS
-        return (ret_val, sn.decode())
+        (status, data) = self.send_cmd(MSN_RR, MSN_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            sn = data
+            status = ANS_STATUS_SUCCESS
+        return (status, sn.decode() if sn is not None else None)
 
     def product_number_read(self):
-        reg = MPN_RR
         pn = None
-        ret_val = self.encode_send_request(reg)
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer()
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == MPN_RA:
-                pn = data
-                ret_val = ANS_STATUS_SUCCESS
-        return (ret_val, pn.decode())
-
+        (status, data) = self.send_cmd(MPN_RR, MPN_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            pn = data
+            status = ANS_STATUS_SUCCESS
+        return (status, pn.decode() if pn is not None else None)
 
     def rtc_read(self):
-        reg = RTC_RR
         time = None
-        ret_val = self.encode_send_request(reg)
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer()
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == RTC_RA:
-                time_tmp = (data[3] << 24) +\
-                            (data[2] << 16) +\
-                            (data[1] << 8) +\
-                            (data[0] << 0)
-                time = time_tmp + ASTROCAST_REF_UNIX_TIME
-                ret_val = ANS_STATUS_SUCCESS
-        return (ret_val, time)
+        (status, data) = self.send_cmd(RTC_RR, RTC_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            time_tmp = (data[3] << 24) +\
+                        (data[2] << 16) +\
+                        (data[1] << 8) +\
+                        (data[0] << 0)
+            time = time_tmp + ASTROCAST_REF_UNIX_TIME
+            ret_status = ANS_STATUS_SUCCESS
+        return (ret_status, time)
 
     def read_next_contact_opportunity(self, delay):
         pass
@@ -553,50 +565,41 @@ class ASTRONODE:
         pass
 
     def enqueue_payload(self, data, id=None):
-        ret_val = ANS_STATUS_NONE
+        status = ANS_STATUS_NONE
 
         if len(data) <= ASN_MAX_MSG_SIZE:
             # Set parameters
             (message_id, message) = self.generate_message(data, True, id)
             id = message_id
             # Send request
-            reg = PLD_ER
-            ret_val = self.encode_send_request(reg, message)
-            if ret_val == ANS_STATUS_DATA_SENT:
-                (ret_val, opcode, data) = self.receive_decode_answer()
-                if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == PLD_EA:
-                    # Check that enqueued payload has the correct ID
-                    id_check = (data[1] << 8) + data[0]
-                    if id == id_check:
-                        ret_val = ANS_STATUS_SUCCESS
-                    else:
-                        ret_val = ANS_STATUS_PAYLOAD_ID_CHECK_FAILED
+            (status, data) = self.send_cmd(PLD_ER, PLD_EA, message)
+            if status == ANS_STATUS_DATA_RECEIVED:
+                # Check that enqueued payload has the correct ID
+                id_check = (data[1] << 8) + data[0]
+                if id == id_check:
+                    status = ANS_STATUS_SUCCESS
+                else:
+                    status = ANS_STATUS_PAYLOAD_ID_CHECK_FAILED
         else:
-            ret_val = ANS_STATUS_PAYLOAD_TOO_LONG
+            status = ANS_STATUS_PAYLOAD_TOO_LONG
 
-        return (ret_val, id)
+        return (status, id)
 
     def dequeue_payload(self):
-        # Send request
-        reg = PLD_DR
         id = None
-        ret_val = self.encode_send_request(reg, "")
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer()
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == PLD_DA:
-                id = (data[1] << 8) + data[0]
-                ret_val = ANS_STATUS_SUCCESS
-        return (ret_val, id)
+        # Send request
+        (status, data) = self.send_cmd(PLD_DR, PLD_DA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            id = (data[1] << 8) + data[0]
+            status = ANS_STATUS_SUCCESS
+        return (status, id)
 
     def clear_free_payloads(self):
         # Send request
-        reg = PLD_FR
-        ret_val = self.encode_send_request(reg, "")
-        if ret_val == ANS_STATUS_DATA_SENT:
-            (ret_val, opcode, data) = self.receive_decode_answer()
-            if ret_val == ANS_STATUS_DATA_RECEIVED and opcode == PLD_FA:
-                ret_val = ANS_STATUS_SUCCESS
-        return ret_val
+        (status, _) = self.send_cmd(PLD_FR, PLD_FA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def read_command_8B(self, data, createdDate):
         pass
