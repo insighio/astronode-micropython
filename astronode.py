@@ -440,7 +440,7 @@ class ASTRONODE:
 
     def configuration_write(self, with_pl_ack, with_geoloc, with_ephemeris, with_deep_sleep, with_ack_event_pin_mask, with_reset_event_pin_mask):
         # Set parameters
-        param_w = [0] * 3
+        param_w = bytearray(3)
 
         if with_pl_ack:
             param_w[0] |= 1 << 0
@@ -455,7 +455,9 @@ class ASTRONODE:
         if with_reset_event_pin_mask:
             param_w[2] |= 1 << 1
 
-        (status, _) = self.send_cmd(CFG_WR, CFG_WA, param_w)
+        (_, message) = self.generate_message(param_w)
+
+        (status, _) = self.send_cmd(CFG_WR, CFG_WA, message)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
         return status
