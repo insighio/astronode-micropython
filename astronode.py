@@ -596,7 +596,7 @@ class ASTRONODE:
         # Send request
         (status, data) = self.send_cmd(PLD_DR, PLD_DA)
         if status == ANS_STATUS_DATA_RECEIVED:
-            id = (data[1] << 8) + data[0]
+            id = ubinascii.hexlify(data).decode('ascii')
             status = ANS_STATUS_SUCCESS
         return (status, id)
 
