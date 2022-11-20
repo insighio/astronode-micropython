@@ -252,9 +252,9 @@ class ASTRONODE:
         msg += data
         crc = self._generate_crc(msg)
         msg += crc
-        msg = ubinascii.hexlify(msg.encode())
         if self._debug_on:
             print(">: {}".format(msg))
+        msg = ubinascii.hexlify(msg.encode())
         msg = self.text_to_hex(STX) + msg.decode()
         msg += self.text_to_hex(ETX)
         msg = ubinascii.unhexlify(msg)
@@ -581,7 +581,7 @@ class ASTRONODE:
             (status, data) = self.send_cmd(PLD_ER, PLD_EA, message)
             if status == ANS_STATUS_DATA_RECEIVED:
                 # Check that enqueued payload has the correct ID
-                id_check = (data[1] << 8) + data[0]
+                id_check = ubinascii.hexlify(data).decode('ascii')
                 if id == id_check:
                     status = ANS_STATUS_SUCCESS
                 else:
