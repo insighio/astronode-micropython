@@ -214,6 +214,12 @@ class ASTRONODE:
         crc += crc_tmp[1]
         return crc
 
+    def ljust(self, byte_array, size):
+        byte_array_size = len(byte_array)
+        if size > byte_array_size:
+            byte_array += b'\x00' * (size - byte_array_size)
+        return byte_array
+
     def text_to_hex(self, text):
         return ubinascii.hexlify(text).decode('ascii')
 
@@ -490,12 +496,12 @@ class ASTRONODE:
             status = ANS_STATUS_SUCCESS
         return status
 
-    def wifi_configuration_write(wland_ssid, wland_key, auth_token):
-        configuration_wifi = ubinascii.hexlify(wland_ssid).ljust(66, b'0') + \
-                     ubinascii.hexlify(wland_key).ljust(128, b'0') + ubinascii.hexlify(auth_token).ljust(194, b'0')
-        configuration_wifi = configuration_wifi.decode("utf-8")
+    def wifi_configuration_write(self, wland_ssid, wland_key, auth_token):
+        configuration_wifi = self.ljust(wland_ssid.encode(), 33) + \
+                     self.ljust(wland_key.encode(), 64) + self.ljust(auth_token.encode(), 97)
 
-        (status, _) = self.send_cmd(WIF_WR, WIF_WA, configuration_wifi)
+        (_, message) = self.generate_message(configuration_wifi)
+        (status, _) = self.send_cmd(WIF_WR, WIF_WA, message)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
         return status
