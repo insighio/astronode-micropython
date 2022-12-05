@@ -1,7 +1,21 @@
-import ubinascii
-from machine import UART
+try:
+    import ubinascii as binascii
+except:
+    import binascii
+    
+from machine import UART # alternative?
+
 import random
-import utime
+
+try:
+    import utime as time
+except:
+    import time
+
+try:
+    import ustruct as struct
+except:
+    import struct
 
 TIMEOUT_SERIAL = 1500 # ms
 BOOT_TIME = 400       # ms
@@ -207,7 +221,7 @@ class ASTRONODE:
         return crc
 
     def _generate_crc(self, data):
-        crc_tmp = '{:04X}'.format(self._crc16(ubinascii.unhexlify(data)))
+        crc_tmp = '{:04X}'.format(self._crc16(binascii.unhexlify(data)))
         crc = crc_tmp[2]
         crc += crc_tmp[3]
         crc += crc_tmp[0]
@@ -221,7 +235,7 @@ class ASTRONODE:
         return byte_array
 
     def text_to_hex(self, text):
-        return ubinascii.hexlify(text).decode('ascii')
+        return binascii.hexlify(text).decode('ascii')
 
     def generate_message(self, payload, include_message_id=False, id=None):
         m = ''
@@ -260,10 +274,10 @@ class ASTRONODE:
         msg += crc
         if self._debug_on:
             print(">: {}".format(msg))
-        msg = ubinascii.hexlify(msg.encode())
+        msg = binascii.hexlify(msg.encode())
         msg = self.text_to_hex(STX) + msg.decode()
         msg += self.text_to_hex(ETX)
-        msg = ubinascii.unhexlify(msg)
+        msg = binascii.unhexlify(msg)
         msg = msg.upper()
 
         message_len = self._serialPort.write(msg)
@@ -278,17 +292,18 @@ class ASTRONODE:
         opcode = None
         data = None
 
-        start_timestamp = utime.ticks_ms()
+        start_timestamp = time.ticks_ms()
         timeout_timestamp = start_timestamp + 1000
         do_capture = False
         while True:
-            if(utime.ticks_ms() >= timeout_timestamp):
+            if(time.ticks_ms() >= timeout_timestamp):
                 break
 
             if self._serialPort.any():
                 b = self._serialPort.read(1)
                 if b == STX:
                     do_capture = True
+                    message_buffer = b''
 
                 if do_capture:
                     message_buffer += b
@@ -296,7 +311,7 @@ class ASTRONODE:
                 if b == ETX:
                     break
                 continue
-            utime.sleep_ms(1)
+            time.sleep_ms(1)
 
         if self._debug_on:
             print("<: {}".format(message_buffer))
@@ -304,7 +319,7 @@ class ASTRONODE:
         if len(message_buffer) > 6: # At least STX (1), ETX (1), CRC (4)
             message = message_buffer[1:-5].decode() # [STX (1), - (CRC (4) + ETX (1))]
             cmd_crc_check = message_buffer[-5:-1].decode()
-            com_buf_astronode = ubinascii.unhexlify(message)
+            com_buf_astronode = binascii.unhexlify(message)
 
             # Verify CRC
             cmd_crc = self._generate_crc(message)
@@ -438,6 +453,11 @@ class ASTRONODE:
             self.peak_rssi_last_contact = 0
             self.time_peak_rssi_last_contact = 0
 
+    class ASTRONODE_DOWNLINK_COMMAND_STRUCT:
+        def __init__(self):
+            self.data = None
+            self.create_date = None
+
     def enableDebugging(self):
         self._debug_on = True
 
@@ -506,11 +526,39 @@ class ASTRONODE:
             status = ANS_STATUS_SUCCESS
         return status
 
-    def satellite_search_config_write(search_period, force_search):
-        pass
+    # ex:L modem.satellite_search_config_write(astronode.SAT_SEARCH_17905_MS)
+    def satellite_search_config_write(self, search_period, force_search=False):
+        # Set parameters
+        param_w = bytearray(2)
 
-    def geolocation_write(lat, lon):
-        pass
+        param_w[0] = struct.pack("B", search_period)[0]
+        if force_search:
+            param_w[1] |= 1 << 0
+
+        (_, message) = self.generate_message(param_w)
+
+        (status, _) = self.send_cmd(SSC_WR, SSC_WA, message)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
+
+    def geolocation_write(self, lat, lon):
+        # Set parameters
+        status = None
+        param_w = bytearray()
+
+        param_w += struct.pack("f", lat)
+        param_w += struct.pack("f", lon)
+
+        if len(param_w) != 8:
+            return status
+
+        (_, message) = self.generate_message(param_w)
+
+        (status, _) = self.send_cmd(GEO_WR, GEO_WA, message)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def factory_reset(self):
         # Send request
@@ -547,34 +595,147 @@ class ASTRONODE:
         time = None
         (status, data) = self.send_cmd(RTC_RR, RTC_RA)
         if status == ANS_STATUS_DATA_RECEIVED:
-            time_tmp = (data[3] << 24) +\
-                        (data[2] << 16) +\
-                        (data[1] << 8) +\
-                        (data[0] << 0)
+            (time_tmp,) = struct.unpack(">L", data)
             time = time_tmp + ASTROCAST_REF_UNIX_TIME
             ret_status = ANS_STATUS_SUCCESS
         return (ret_status, time)
 
-    def read_next_contact_opportunity(self, delay):
-        pass
+    def read_next_contact_opportunity(self):
+        delay = None
+        (status, data) = self.send_cmd(RTC_RR, RTC_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            (delay,) = struct.unpack(">L", data)
+            ret_status = ANS_STATUS_SUCCESS
+        return (ret_status, delay)
 
     def read_performance_counter(self):
-        pass
+        per_struct = None
+        (status, data) = self.send_cmd(PER_RR, PER_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            per_struct = self.ASTRONODE_PER_STRUCT()
+
+            i = 0
+            while i < len(data):
+                type = data[i]
+                length = data[i+1]
+                
+                if type == PER_TYPE_SAT_SEARCH_PHASE_CNT:
+                    (per_struct.sat_search_phase_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_SAT_DETECT_OPERATION_CNT:
+                    (per_struct.sat_detect_operation_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_SIGNAL_DEMOD_PHASE_CNT:
+                    (per_struct.signal_demod_phase_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_SIGNAL_DEMOD_ATTEMPS_CNT:
+                    (per_struct.signal_demod_attempt_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_SIGNAL_DEMOD_SUCCESS_CNT:
+                    (per_struct.signal_demod_success_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_ACK_DEMOD_ATTEMPT_CNT:
+                    (per_struct.ack_demod_attempt_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_ACK_DEMOD_SUCCESS_CNT:
+                    (per_struct.ack_demod_success_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_QUEUED_MSG_CNT:
+                    (per_struct.queued_msg_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_DEQUEUED_UNACK_MSG_CNT:
+                    (per_struct.dequeued_unack_msg_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_ACK_MSG_CNT:
+                    (per_struct.ack_msg_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_SENT_FRAGMENT_CNT:
+                    (per_struct.sent_fragment_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_ACK_FRAGMENT_CNT:
+                    (per_struct.ack_fragment_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_CMD_DEMOD_ATTEMPT_CNT:
+                    (per_struct.cmd_demod_attempt_cnt,) = struct.unpack_from("L", data, i+2)
+                elif type == PER_TYPE_CMD_DEMOD_SUCCESS_CNT:
+                    (per_struct.cmd_demod_success_cnt,) = struct.unpack_from("L", data, i+2)
+                    
+                i += (2 + length)
+            status = ANS_STATUS_SUCCESS
+        
+        return (status, per_struct)
 
     def save_performance_counter(self):
-        pass
+        # Send request
+        (status, _) = self.send_cmd(PER_SR, PER_SA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def clear_performance_counter(self):
-        pass
+        # Send request
+        (status, _) = self.send_cmd(PER_CR, PER_CA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def read_module_state(self):
-        pass
+        module_state = None
+        (status, data) = self.send_cmd(MST_RR, MST_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            module_state = self.ASTRONODE_MST_STRUCT()
+
+            i = 0
+            while i < len(data):
+                type = data[i]
+                length = data[i+1]
+                
+                if type == MST_TYPE_MSG_IN_QUEUE:
+                    (module_state.msg_in_queue,) = struct.unpack_from("B", data, i+2)
+                elif type == MST_TYPE_ACK_MSG_QUEUE:
+                    (module_state.ack_msg_in_queue,) = struct.unpack_from("B", data, i+2)
+                elif type == MST_TYPE_LAST_RST:
+                    (module_state.last_rst,) = struct.unpack_from("B", data, i+2)
+                elif type == MST_UPTIME:
+                    (module_state.uptime ,) = struct.unpack_from("L", data, i+2)
+                i += (2 + length)
+            status = ANS_STATUS_SUCCESS
+        
+        return (status, module_state)
 
     def read_environment_details(self):
-        pass
+        env_details = None
+        (status, data) = self.send_cmd(END_RR, END_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            env_details = self.ASTRONODE_END_STRUCT()
+
+            i = 0
+            while i < len(data):
+                type = data[i]
+                length = data[i+1]
+                
+                if type == END_TYPE_LAST_MAC_RESULT:
+                    (env_details.last_mac_result,) = struct.unpack_from("B", data, i+2)
+                elif type == END_TYPE_LAST_SAT_SEARCH_PEAK_RSSI:
+                    (env_details.last_sat_search_peak_rssi,) = struct.unpack_from("B", data, i+2)
+                elif type == END_TYPE_TIME_SINCE_LAST_SAT_SEARCH:
+                    (env_details.time_since_last_sat_search,) = struct.unpack_from("L", data, i+2)
+                i += (2 + length)
+            status = ANS_STATUS_SUCCESS
+        
+        return (status, env_details)
 
     def read_last_contact_details(self):
-        pass
+        lcd_details = None
+        (status, data) = self.send_cmd(END_RR, END_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            lcd_details = self.ASTRONODE_LCD_STRUCT()
+
+            i = 0
+            while i < len(data):
+                type = data[i]
+                length = data[i+1]
+                
+                if type == LCD_TYPE_TIME_START_LAST_CONTACT:
+                    (lcd_details.time_start_last_contact,) = struct.unpack_from("L", data, i+2)
+                elif type == LCD_TYPE_TIME_END_LAST_CONTACT:
+                    (lcd_details.time_end_last_contact,) = struct.unpack_from("L", data, i+2)
+                elif type == LCD_TYPE_PEAK_RSSI_LAST_CONTACT:
+                    (lcd_details.peak_rssi_last_contact,) = struct.unpack_from("B", data, i+2)
+                elif type == LCD_TYPE_TIME_PEAK_RSSI_LAST_CONTACT:
+                    (lcd_details.time_peak_rssi_last_contact,) = struct.unpack_from("L", data, i+2)
+                i += (2 + length)
+            status = ANS_STATUS_SUCCESS
+        
+        return (status, lcd_details)
 
     def enqueue_payload(self, data, id=None):
         status = ANS_STATUS_NONE
@@ -587,7 +748,7 @@ class ASTRONODE:
             (status, data) = self.send_cmd(PLD_ER, PLD_EA, message)
             if status == ANS_STATUS_DATA_RECEIVED:
                 # Check that enqueued payload has the correct ID
-                id_check = ubinascii.hexlify(data).decode('ascii')
+                id_check = binascii.hexlify(data).decode('ascii')
                 if id == id_check:
                     status = ANS_STATUS_SUCCESS
                 else:
@@ -602,7 +763,7 @@ class ASTRONODE:
         # Send request
         (status, data) = self.send_cmd(PLD_DR, PLD_DA)
         if status == ANS_STATUS_DATA_RECEIVED:
-            id = ubinascii.hexlify(data).decode('ascii')
+            id = binascii.hexlify(data).decode('ascii')
             status = ANS_STATUS_SUCCESS
         return (status, id)
 
@@ -614,25 +775,70 @@ class ASTRONODE:
         return status
 
     def read_command_8B(self, data, createdDate):
-        pass
+        dl_data = self.ASTRONODE_DOWNLINK_COMMAND_STRUCT()
+        (status, data) = self.send_cmd(CMD_RR, CMD_RA)
+        if status == ANS_STATUS_DATA_RECEIVED and len(data) == (4+DATA_CMD_8B_SIZE):
+            (time_tmp,) = struct.unpack(">L", data)
+            dl_data.create_date = time_tmp + ASTROCAST_REF_UNIX_TIME
+            dl_data.data = data[4: 4 + DATA_CMD_8B_SIZE]
+            ret_status = ANS_STATUS_SUCCESS
+        return (ret_status, dl_data)
 
     def read_command_40B(self, data,createdDate):
-        pass
+        dl_data = self.ASTRONODE_DOWNLINK_COMMAND_STRUCT()
+        (status, data) = self.send_cmd(CMD_RR, CMD_RA)
+        if status == ANS_STATUS_DATA_RECEIVED and len(data) == (4+DATA_CMD_40B_SIZE):
+            (time_tmp,) = struct.unpack(">L", data)
+            dl_data.create_date = time_tmp + ASTROCAST_REF_UNIX_TIME
+            dl_data.data = data[4: 4 + DATA_CMD_40B_SIZE]
+            ret_status = ANS_STATUS_SUCCESS
+        return (ret_status, dl_data)
 
     def clear_command(self):
-        pass
+        # Send request
+        (status, _) = self.send_cmd(CMD_CR, CMD_CA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
-    def event_read(event_type):
-        pass
+    def event_read(self, event_type):
+        event_type = EVENT_NO_EVENT
 
-    def read_satellite_ack():
-        pass
+        #Send request
+        (status, data) = self.send_cmd(EVT_RR, EVT_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            if data[0] & (1 << 0):
+                event_type = EVENT_MSG_ACK
+            elif data[0] & (1 << 1):
+                event_type = EVENT_RESET
+            elif data[0] & (1 << 2):
+                event_type = EVENT_CMD_RECEIVED
+            elif data[0] & (1 << 3):
+                event_type = EVENT_MSG_PENDING
+        return (status, event_type)
+
+    def read_satellite_ack(self):
+        id = None
+        # Send request
+        (status, data) = self.send_cmd(SAK_RR, SAK_RA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            id = binascii.hexlify(data).decode('ascii')
+            status = ANS_STATUS_SUCCESS
+        return (status, id)
 
     def clear_satellite_ack(self):
-        pass
+        # Send request
+        (status, _) = self.send_cmd(SAK_CR, SAK_CA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def clear_reset_event(self):
-        pass
+        # Send request
+        (status, _) = self.send_cmd(RES_CR, RES_CA)
+        if status == ANS_STATUS_DATA_RECEIVED:
+            status = ANS_STATUS_SUCCESS
+        return status
 
     def is_alive(self):
         (status, _) = self.send_cmd(0x00, 0x00)
