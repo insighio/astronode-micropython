@@ -1,9 +1,14 @@
 try:
+    from machine import UART
+    is_micropython = True
+except:
+    import serial
+    is_micropython = False
+
+try:
     import ubinascii as binascii
 except:
     import binascii
-    
-from machine import UART # alternative?
 
 import random
 
@@ -187,9 +192,24 @@ class ASTRONODE:
         self._serialPort = None
         self._debug_on = False
 
-        if modem_tx is not None and modem_rx is not None:
+        if modem_tx is not None and modem_rx is not None and is_micropython:
             self._serialPort = UART(1, 9600, tx=modem_tx, rx=modem_rx)
             self._serialPort.init(9600, bits=8, parity=None, stop=1, tx=modem_tx, rx=modem_rx, timeout=3000, timeout_char=100)
+
+    def __init__(self, modem_serial_port_name):
+        self._serialPort = None
+        self._debug_on = False
+
+        if modem_serial_port_name is not None and not is_micropython:
+            self._serialPort = serial.Serial(
+                                    port = modem_serial_port_name,
+                                    baudrate = 9600,
+                                    bytesize = serial.EIGHTBITS,
+                                    parity = serial.PARITY_NONE,
+                                    stopbits = serial.STOPBITS_ONE,
+                                    timeout = 3,
+                                    inter_byte_timeout = 0.001
+                                )
 
     def _crc16(self, data):
         '''
