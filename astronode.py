@@ -5,22 +5,28 @@ except:
     import serial
     is_micropython = False
 
-try:
+if is_micropython:
     import ubinascii as binascii
-except:
-    import binascii
-
-import random
-
-try:
     import utime as time
-except:
-    import time
-
-try:
     import ustruct as struct
-except:
+
+    def now_ms():
+        return time.ticks_ms()
+
+    def sleep_ms(mills):
+        time.sleep_ms(mills)
+else:
+    import binascii
+    import time
     import struct
+
+    def now_ms():
+        return int(time.time() * 1000)
+
+    def sleep_ms(mills):
+        time.sleep(mills/1000)
+    
+import random
 
 TIMEOUT_SERIAL = 1500 # ms
 BOOT_TIME = 400       # ms
@@ -285,14 +291,14 @@ class ASTRONODE:
         opcode = None
         data = None
 
-        start_timestamp = time.ticks_ms()
+        start_timestamp = now_ms()
         timeout_timestamp = start_timestamp + 1000
         do_capture = False
         while True:
-            if(time.ticks_ms() >= timeout_timestamp):
+            if(now_ms() >= timeout_timestamp):
                 break
 
-            if self._serialPort.any():
+            if (is_micropython and self._serialPort.any()) or not is_micropython:
                 b = self._serialPort.read(1)
                 if b == STX:
                     do_capture = True
@@ -304,7 +310,7 @@ class ASTRONODE:
                 if b == ETX:
                     break
                 continue
-            time.sleep_ms(1)
+            sleep_ms(1)
 
         if self._debug_on:
             print("<: {}".format(message_buffer))
