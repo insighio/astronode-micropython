@@ -188,28 +188,23 @@ DATA_CMD_40B_SIZE = 40
 ASTROCAST_REF_UNIX_TIME = 1514764800 # 2018-01-01T00:00:00Z (= Astrocast time)
 
 class ASTRONODE:
-    def __init__(self, modem_tx=None, modem_rx=None):
+    def __init__(self, modem_tx, modem_rx, modem_serial_port_name=None):
         self._serialPort = None
         self._debug_on = False
 
         if modem_tx is not None and modem_rx is not None and is_micropython:
             self._serialPort = UART(1, 9600, tx=modem_tx, rx=modem_rx)
             self._serialPort.init(9600, bits=8, parity=None, stop=1, tx=modem_tx, rx=modem_rx, timeout=3000, timeout_char=100)
-
-    def __init__(self, modem_serial_port_name):
-        self._serialPort = None
-        self._debug_on = False
-
-        if modem_serial_port_name is not None and not is_micropython:
+        elif modem_serial_port_name is not None and not is_micropython:
             self._serialPort = serial.Serial(
-                                    port = modem_serial_port_name,
-                                    baudrate = 9600,
-                                    bytesize = serial.EIGHTBITS,
-                                    parity = serial.PARITY_NONE,
-                                    stopbits = serial.STOPBITS_ONE,
-                                    timeout = 3,
-                                    inter_byte_timeout = 0.001
-                                )
+                                port = modem_serial_port_name,
+                                baudrate = 9600,
+                                bytesize = serial.EIGHTBITS,
+                                parity = serial.PARITY_NONE,
+                                stopbits = serial.STOPBITS_ONE,
+                                timeout = 3,
+                                inter_byte_timeout = 0.001
+                            )
 
     def _crc16(self, data):
         '''
@@ -248,46 +243,24 @@ class ASTRONODE:
         crc += crc_tmp[1]
         return crc
 
-    def ljust(self, byte_array, size):
+    def _ljust(self, byte_array, size):
         byte_array_size = len(byte_array)
         if size > byte_array_size:
             byte_array += b'\x00' * (size - byte_array_size)
         return byte_array
 
-    def text_to_hex(self, text):
+    def _text_to_hex(self, text):
         return binascii.hexlify(text).decode('ascii')
 
-    def generate_message(self, payload, include_message_id=False, id=None):
+    def _generate_message(self, payload, include_message_id=False, id=None):
         m = ''
         if include_message_id:
             id = id if id is not None else ('{:04s}'.format((hex(random.randint(0, 65535)))[2:6]))
             m = id
-        m += self.text_to_hex(payload)
+        m += self._text_to_hex(payload)
         return (id, m)
 
-    def generate_geolocation(lat, lng):
-        lat_tmp = '{:08x}'.format(int(lat * 1e7) & (2**32-1))
-        lng_tmp = '{:08x}'.format(int(lng * 1e7) & (2**32-1))
-        geolocation = lat_tmp[6]
-        geolocation += lat_tmp[7]
-        geolocation += lat_tmp[4]
-        geolocation += lat_tmp[5]
-        geolocation += lat_tmp[2]
-        geolocation += lat_tmp[3]
-        geolocation += lat_tmp[0]
-        geolocation += lat_tmp[1]
-        geolocation += lng_tmp[6]
-        geolocation += lng_tmp[7]
-        geolocation += lng_tmp[4]
-        geolocation += lng_tmp[5]
-        geolocation += lng_tmp[2]
-        geolocation += lng_tmp[3]
-        geolocation += lng_tmp[0]
-        geolocation += lng_tmp[1]
-        return geolocation
-
-    # Functions prototype
-    def encode_send_request(self, opcode, data=""):
+    def _encode_send_request(self, opcode, data=""):
         msg = "%0.2X" % opcode
         msg += data
         crc = self._generate_crc(msg)
@@ -295,8 +268,8 @@ class ASTRONODE:
         if self._debug_on:
             print(">: {}".format(msg))
         msg = binascii.hexlify(msg.encode())
-        msg = self.text_to_hex(STX) + msg.decode()
-        msg += self.text_to_hex(ETX)
+        msg = self._text_to_hex(STX) + msg.decode()
+        msg += self._text_to_hex(ETX)
         msg = binascii.unhexlify(msg)
         msg = msg.upper()
 
@@ -306,7 +279,7 @@ class ASTRONODE:
         else:
             return ANS_STATUS_HW_ERR
 
-    def receive_decode_answer(self):
+    def _receive_decode_answer(self):
         message_buffer = b''
         ret_status = ANS_STATUS_NONE
         opcode = None
@@ -367,9 +340,9 @@ class ASTRONODE:
 
     def send_cmd(self, reg_req, reg_ans, params=""):
         ret_data = None
-        ret_status = self.encode_send_request(reg_req, params)
+        ret_status = self._encode_send_request(reg_req, params)
         if ret_status == ANS_STATUS_DATA_SENT:
-            (ret_status, opcode, data) = self.receive_decode_answer()
+            (ret_status, opcode, data) = self._receive_decode_answer()
             if ret_status == ANS_STATUS_DATA_RECEIVED and opcode == reg_ans:
                 ret_data = data
         return (ret_status, ret_data)
@@ -501,12 +474,12 @@ class ASTRONODE:
         if with_reset_event_pin_mask:
             param_w[2] |= 1 << 1
 
-        (_, message) = self.generate_message(param_w)
+        (_, message) = self._generate_message(param_w)
 
         (status, _) = self.send_cmd(CFG_WR, CFG_WA, message)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
     def configuration_read(self):
         config = None
@@ -534,17 +507,17 @@ class ASTRONODE:
         (status, _) = self.send_cmd(CFG_SR, CFG_SA)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
     def wifi_configuration_write(self, wland_ssid, wland_key, auth_token):
-        configuration_wifi = self.ljust(wland_ssid.encode(), 33) + \
-                     self.ljust(wland_key.encode(), 64) + self.ljust(auth_token.encode(), 97)
+        configuration_wifi = self._ljust(wland_ssid.encode(), 33) + \
+                     self._ljust(wland_key.encode(), 64) + self._ljust(auth_token.encode(), 97)
 
-        (_, message) = self.generate_message(configuration_wifi)
+        (_, message) = self._generate_message(configuration_wifi)
         (status, _) = self.send_cmd(WIF_WR, WIF_WA, message)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
     # ex:L modem.satellite_search_config_write(astronode.SAT_SEARCH_17905_MS)
     def satellite_search_config_write(self, search_period, force_search=False):
@@ -555,37 +528,36 @@ class ASTRONODE:
         if force_search:
             param_w[1] |= 1 << 0
 
-        (_, message) = self.generate_message(param_w)
+        (_, message) = self._generate_message(param_w)
 
         (status, _) = self.send_cmd(SSC_WR, SSC_WA, message)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
+    # modem.geolocation_write(37.9787032,23.7513826)
     def geolocation_write(self, lat, lon):
         # Set parameters
         status = None
         param_w = bytearray()
 
-        param_w += struct.pack("f", lat)
-        param_w += struct.pack("f", lon)
+        param_w += struct.pack("i", int(lat * 1E7))
+        param_w += struct.pack("i", int(lon * 1E7))
 
-        if len(param_w) != 8:
-            return status
+        if len(param_w) == 8:
+            (_, message) = self._generate_message(param_w)
 
-        (_, message) = self.generate_message(param_w)
-
-        (status, _) = self.send_cmd(GEO_WR, GEO_WA, message)
-        if status == ANS_STATUS_DATA_RECEIVED:
-            status = ANS_STATUS_SUCCESS
-        return status
+            (status, _) = self.send_cmd(GEO_WR, GEO_WA, message)
+            if status == ANS_STATUS_DATA_RECEIVED:
+                status = ANS_STATUS_SUCCESS
+        return (status, None)
 
     def factory_reset(self):
         # Send request
         (status, _) = self.send_cmd(CFG_FR, CFG_FA)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
     def guid_read(self):
         guid = None
@@ -678,14 +650,14 @@ class ASTRONODE:
         (status, _) = self.send_cmd(PER_SR, PER_SA)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
     def clear_performance_counter(self):
         # Send request
         (status, _) = self.send_cmd(PER_CR, PER_CA)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
     def read_module_state(self):
         module_state = None
@@ -762,7 +734,7 @@ class ASTRONODE:
 
         if len(data) <= ASN_MAX_MSG_SIZE:
             # Set parameters
-            (message_id, message) = self.generate_message(data, True, id)
+            (message_id, message) = self._generate_message(data, True, id)
             id = message_id
             # Send request
             (status, data) = self.send_cmd(PLD_ER, PLD_EA, message)
@@ -792,7 +764,7 @@ class ASTRONODE:
         (status, _) = self.send_cmd(PLD_FR, PLD_FA)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
     def read_command_8B(self, data, createdDate):
         dl_data = self.ASTRONODE_DOWNLINK_COMMAND_STRUCT()
@@ -819,9 +791,9 @@ class ASTRONODE:
         (status, _) = self.send_cmd(CMD_CR, CMD_CA)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
-    def event_read(self, event_type):
+    def event_read(self):
         event_type = EVENT_NO_EVENT
 
         #Send request
@@ -851,14 +823,14 @@ class ASTRONODE:
         (status, _) = self.send_cmd(SAK_CR, SAK_CA)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
     def clear_reset_event(self):
         # Send request
         (status, _) = self.send_cmd(RES_CR, RES_CA)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
-        return status
+        return (status, None)
 
     def is_alive(self):
         (status, _) = self.send_cmd(0x00, 0x00)
