@@ -92,7 +92,7 @@ The main class that handles the module commands:
     * `reg_ans`: (int) the code of the expected response command as defined in Astrocast's documentation
     * `params`: (string / bytearray) the parameters of the request command. Strings can be accepted, otherwise it is advised to provide bytearrays (ex. b'testing')
   * Returns tuple (status, data):
-    * `status`: (int) the status code of the operation. Possible values are defined as macros at `astronode.ANS_STATUS_*`. A successful call always returns `astronode.ANS_STATUS_DATA_RECEIVED`. Can be translated into human readable form by calling `ASTRONODE.get_error_code_string(status)`
+    * `status`: (int) the status code of the operation. Possible values are defined as macros at `astronode.ANS_STATUS_*`. A successful call always returns `astronode.ANS_STATUS_DATA_RECEIVED`. Can be translated into human readable form by calling [ASTRONODE.get_error_code_string(status)](#get_error_code_stringcode)
     * `data`: (bytearray) the data in bytes returned by the module. They require further processing to be usable.
       
   ### `get_error_code_string(code)`
@@ -259,7 +259,7 @@ The main class that handles the module commands:
     * `event_type`: (int) enumeration code of event. Possible values are defined as macros at `astronode.EVENT_MSG_*`
 
   ### `read_satellite_ack()`
-  Read Satellite ACK when `event_read()` returns `astronode.EVENT_MSG_ACK`. (link: [SAK_RR](https://docs.astrocast.com/docs/products/astronode-api/commands-definition#sak_r-read-satellite-ack))
+  Read Satellite ACK when a call to [ASTRONODEevent_read()](#event_read) returns `astronode.EVENT_MSG_ACK`. (link: [SAK_RR](https://docs.astrocast.com/docs/products/astronode-api/commands-definition#sak_r-read-satellite-ack))
   * Returns tuple (status, id):
     * `status`: (int) the status code of the operation
     * `id`: (2 bytes) the ID of the message
