@@ -54,7 +54,7 @@ CMD_CR = 0x48 # Confirm to the module that the command was properly decoded and 
 RES_CR = 0x55 # Clear reset event
 TTX_SR = 0x61 # Test Transmit Start Request
 EVT_RR = 0x65 # Reads the event register
-PER_SR = 0x66 # Context Save Request - recommended before cutting power
+CTX_SR = 0x66 # Context Save Request - recommended before cutting power
 PER_RR = 0x67 # Performance Counter Read Request
 PER_CR = 0x68 # Performance Counter Clear Request
 MST_RR = 0x69 # Module State Read Request
@@ -83,7 +83,7 @@ CMD_RA = 0xC7 # Answer last CMD_RR with command data
 CMD_CA = 0xC8 # Answer last CMD_CR
 RES_CA = 0xD5 # Answer the reset clear request
 EVT_RA = 0xE5 # Answer indicates which events are currently pending
-PER_SA = 0xE6 # Answer confirming Context Save Request
+CTX_SA = 0xE6 # Answer confirming Context Save Request
 PER_RA = 0xE7 # Answer with Performance Counters in Type, Length, Value format
 PER_CA = 0xE8 # Answer confirming Performance Counter Clear Request
 MST_RA = 0xE9 # Answer with details of the current Module State
@@ -128,6 +128,7 @@ ANS_STATUS_DATA_SENT = 0x7003
 ANS_STATUS_DATA_RECEIVED = 0x7004
 ANS_STATUS_PAYLOAD_TOO_LONG = 0x7005
 ANS_STATUS_PAYLOAD_ID_CHECK_FAILED = 0x7006
+ANS_STATUS_COMMAND_LENGTH_INVALID = 0x7007  # Downlink command length is neither 8 nor 40 bytes.
 
 # Satellite search period
 SAT_SEARCH_DEFAULT = 0
@@ -194,16 +195,16 @@ DATA_CMD_40B_SIZE = 40
 ASTROCAST_REF_UNIX_TIME = 1514764800 # 2018-01-01T00:00:00Z (= Astrocast time)
 
 class ASTRONODE:
-    def __init__(self, modem_tx, modem_rx, modem_serial_port_name=None):
+    def __init__(self, module_tx, module_rx, module_serial_port_name=None):
         self._serialPort = None
         self._debug_on = False
 
-        if modem_tx is not None and modem_rx is not None and is_micropython:
-            self._serialPort = UART(1, 9600, tx=modem_tx, rx=modem_rx)
-            self._serialPort.init(9600, bits=8, parity=None, stop=1, tx=modem_tx, rx=modem_rx, timeout=3000, timeout_char=100)
-        elif modem_serial_port_name is not None and not is_micropython:
+        if module_tx is not None and module_rx is not None and is_micropython:
+            self._serialPort = UART(1, 9600, tx=module_tx, rx=module_rx)
+            self._serialPort.init(9600, bits=8, parity=None, stop=1, tx=module_tx, rx=module_rx, timeout=3000, timeout_char=100)
+        elif module_serial_port_name is not None and not is_micropython:
             self._serialPort = serial.Serial(
-                                port = modem_serial_port_name,
+                                port = module_serial_port_name,
                                 baudrate = 9600,
                                 bytesize = serial.EIGHTBITS,
                                 parity = serial.PARITY_NONE,
@@ -398,6 +399,8 @@ class ASTRONODE:
             return ""
         elif code == ANS_STATUS_DATA_RECEIVED:
             return ""
+        elif code == ANS_STATUS_COMMAND_LENGTH_INVALID:
+            return "Downlink command payload length is invalid"
         else:
             return "Unknown error code.\n"
 
@@ -525,7 +528,7 @@ class ASTRONODE:
             status = ANS_STATUS_SUCCESS
         return (status, None)
 
-    # ex:L modem.satellite_search_config_write(astronode.SAT_SEARCH_17905_MS)
+    # ex:L module.satellite_search_config_write(astronode.SAT_SEARCH_17905_MS)
     def satellite_search_config_write(self, search_period, force_search=False):
         # Set parameters
         param_w = bytearray(2)
@@ -541,7 +544,7 @@ class ASTRONODE:
             status = ANS_STATUS_SUCCESS
         return (status, None)
 
-    # modem.geolocation_write(37.9787032,23.7513826)
+    # module.geolocation_write(37.9787032,23.7513826)
     def geolocation_write(self, lat, lon):
         # Set parameters
         status = None
@@ -600,7 +603,7 @@ class ASTRONODE:
 
     def read_next_contact_opportunity(self):
         delay = None
-        (status, data) = self.send_cmd(RTC_RR, RTC_RA)
+        (status, data) = self.send_cmd(NCO_RR, NCO_RA)
         if status == ANS_STATUS_DATA_RECEIVED:
             (delay,) = struct.unpack(">L", data)
             ret_status = ANS_STATUS_SUCCESS
@@ -651,9 +654,9 @@ class ASTRONODE:
         
         return (status, per_struct)
 
-    def save_performance_counter(self):
+    def save_context(self):
         # Send request
-        (status, _) = self.send_cmd(PER_SR, PER_SA)
+        (status, _) = self.send_cmd(CTX_SR, CTX_SA)
         if status == ANS_STATUS_DATA_RECEIVED:
             status = ANS_STATUS_SUCCESS
         return (status, None)
@@ -713,7 +716,7 @@ class ASTRONODE:
 
     def read_last_contact_details(self):
         lcd_details = None
-        (status, data) = self.send_cmd(END_RR, END_RA)
+        (status, data) = self.send_cmd(LCD_RR, LCD_RA)
         if status == ANS_STATUS_DATA_RECEIVED:
             lcd_details = self.ASTRONODE_LCD_STRUCT()
 
@@ -772,24 +775,19 @@ class ASTRONODE:
             status = ANS_STATUS_SUCCESS
         return (status, None)
 
-    def read_command_8B(self, data, createdDate):
+    def read_command(self):
         dl_data = self.ASTRONODE_DOWNLINK_COMMAND_STRUCT()
         (status, data) = self.send_cmd(CMD_RR, CMD_RA)
-        if status == ANS_STATUS_DATA_RECEIVED and len(data) == (4+DATA_CMD_8B_SIZE):
+        if status == ANS_STATUS_DATA_RECEIVED:
             (time_tmp,) = struct.unpack(">L", data)
             dl_data.create_date = time_tmp + ASTROCAST_REF_UNIX_TIME
-            dl_data.data = data[4: 4 + DATA_CMD_8B_SIZE]
-            ret_status = ANS_STATUS_SUCCESS
-        return (ret_status, dl_data)
 
-    def read_command_40B(self, data,createdDate):
-        dl_data = self.ASTRONODE_DOWNLINK_COMMAND_STRUCT()
-        (status, data) = self.send_cmd(CMD_RR, CMD_RA)
-        if status == ANS_STATUS_DATA_RECEIVED and len(data) == (4+DATA_CMD_40B_SIZE):
-            (time_tmp,) = struct.unpack(">L", data)
-            dl_data.create_date = time_tmp + ASTROCAST_REF_UNIX_TIME
-            dl_data.data = data[4: 4 + DATA_CMD_40B_SIZE]
-            ret_status = ANS_STATUS_SUCCESS
+            command_len = len(data) - 4
+            if command_len == DATA_CMD_8B_SIZE or command_len == DATA_CMD_40B_SIZE:
+                dl_data.data = data[4: 4 + command_len]
+                ret_status = ANS_STATUS_SUCCESS
+            else:
+                ret_status = ANS_STATUS_COMMAND_LENGTH_INVALID
         return (ret_status, dl_data)
 
     def clear_command(self):
