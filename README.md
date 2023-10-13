@@ -11,11 +11,11 @@ This library is a direct port to micropython of Astrocast's official Arduino lib
 
 # API reference
 
-The implementation of [Astronode's Serial Commands Definition](https://docs.astrocast.com/docs/products/astronode-api/commands-definition). 
+The implementation of [Astronode's Serial Commands Definition](https://docs.astrocast.com/docs/products/astronode-api/commands-definition).
 
 
 
-## class `ASTRONODE`: 
+## class `ASTRONODE`:
 The main class that handles the module commands:
   ### `__init__(module_tx, module_rx, module_serial_port_name)`
   Constructor of the class
@@ -25,7 +25,7 @@ The main class that handles the module commands:
     * `module_serial_port_name`: `None` (in __micropython__). Else in __Python__ the name of the UART (ex. in Linux `/dev/ttyUSB0`, in Windows `COM3`)
 
   ### class `ASTRONODE_CONFIG`
-  Class for module configuration storage. 
+  Class for module configuration storage.
   * `product_id`
   * `hardware_rev`
   * `firmware_maj_ver`
@@ -63,7 +63,7 @@ The main class that handles the module commands:
   * `uptime`
 
   ### class `ASTRONODE_END_STRUCT`
-  Class for storing Environment Details 
+  Class for storing Environment Details
   * `last_mac_result`
   * `last_sat_search_peak_rssi`
   * `time_since_last_sat_search`
@@ -94,20 +94,20 @@ The main class that handles the module commands:
   * Returns tuple (status, data):
     * `status`: (int) the status code of the operation. Possible values are defined as macros at `astronode.ANS_STATUS_*`. A successful call always returns `astronode.ANS_STATUS_DATA_RECEIVED`. Can be translated into human readable form by calling [ASTRONODE.get_error_code_string(status)](#get_error_code_stringcode)
     * `data`: (bytearray) the data in bytes returned by the module. They require further processing to be usable.
-      
+
   ### `get_error_code_string(code)`
   Get a human readable description for the return status of the commands
   * Parameters:
     * `code`: the status code to be translated
   * Returns:
     * `text`: (string) the description of the code
-      
+
   ### `enableDebugging()`
   Enable debug printing
-  
+
   ### `disableDebugging()`
   Disable debug printing
-  
+
   ### `configuration_write`(`with_pl_ack`, `with_geoloc`, `with_ephemeris`, `with_deep_sleep`, `with_ack_event_pin_mask`, `with_reset_event_pin_mask`)`
   Setup the behavior of the module (link: [CFG_WR Request](https://docs.astrocast.com/docs/products/astronode-api/commands-definition#cfg_wr-request)):
   * Parameters:
@@ -176,7 +176,7 @@ The main class that handles the module commands:
     * `pn`: (string) modules's Product Number
 
   ### `rtc_read()`
-  Read Modules GUID (link: [RTC_RR](https://docs.astrocast.com/docs/products/astronode-api/commands-definition#rtc_rr-request))
+  Read Modules RTC (link: [RTC_RR](https://docs.astrocast.com/docs/products/astronode-api/commands-definition#rtc_rr-request))
   * Returns tuple (status, time):
     * `status`: (int) the status code of the operation
     * `time`: (int) rtc time in epoch
@@ -224,12 +224,12 @@ The main class that handles the module commands:
   ### `enqueue_payload`(`data`, `id`)
   Place a payload in the module queue. (link: [PLD_ER](https://docs.astrocast.com/docs/products/astronode-api/commands-definition#pld_e-enqueue-payload))
   * Parameters:
-    * `data`: (bytearray) the payload in bytes to be transmitted (max: 160 bytes). 
+    * `data`: (bytearray) the payload in bytes to be transmitted (max: 160 bytes).
     * `id`: (2 bytes) ID of the message. If omitted, an auto-generated ID will be used.
   * Returns tuple (status, id):
     * `status`: (int) the status code of the operation
     * `id`: (2 bytes) the ID of the message
-  
+
   ### `dequeue_payload()`
   Remove the oldest payload from the module queue. (link: [PLD_DR](https://docs.astrocast.com/docs/products/astronode-api/commands-definition#pld_d-dequeue-payload))
   * Returns tuple (status, id):
@@ -272,6 +272,3 @@ The main class that handles the module commands:
   ### `clear_reset_event()`: clear the Module Reset bit in the Event Register (link [RES_CR](https://docs.astrocast.com/docs/products/astronode-api/commands-definition#res_c-clear-reset-event))
   * Returns tuple (status, None):
     * `status`: (int) the status code of the operation
-
-  
-
