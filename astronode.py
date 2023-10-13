@@ -25,7 +25,7 @@ else:
 
     def sleep_ms(mills):
         time.sleep(mills/1000)
-    
+
 import random
 
 TIMEOUT_SERIAL = 1500 # ms
@@ -272,11 +272,11 @@ class ASTRONODE:
         msg += data
         crc = self._generate_crc(msg)
         msg += crc
-        if self._debug_on:
-            print(">: {}".format(msg))
         msg = binascii.hexlify(msg.encode())
         msg = self._text_to_hex(STX) + msg.decode()
         msg += self._text_to_hex(ETX)
+        if self._debug_on:
+            print(">: {}".format(msg))
         msg = binascii.unhexlify(msg)
         msg = msg.upper()
 
@@ -596,7 +596,7 @@ class ASTRONODE:
         time = None
         (status, data) = self.send_cmd(RTC_RR, RTC_RA)
         if status == ANS_STATUS_DATA_RECEIVED:
-            (time_tmp,) = struct.unpack(">L", data)
+            (time_tmp,) = struct.unpack("<L", data)
             time = time_tmp + ASTROCAST_REF_UNIX_TIME
             ret_status = ANS_STATUS_SUCCESS
         return (ret_status, time)
@@ -605,7 +605,7 @@ class ASTRONODE:
         delay = None
         (status, data) = self.send_cmd(NCO_RR, NCO_RA)
         if status == ANS_STATUS_DATA_RECEIVED:
-            (delay,) = struct.unpack(">L", data)
+            (delay,) = struct.unpack("<L", data)
             ret_status = ANS_STATUS_SUCCESS
         return (ret_status, delay)
 
@@ -619,7 +619,7 @@ class ASTRONODE:
             while i < len(data):
                 type = data[i]
                 length = data[i+1]
-                
+
                 if type == PER_TYPE_SAT_SEARCH_PHASE_CNT:
                     (per_struct.sat_search_phase_cnt,) = struct.unpack_from("L", data, i+2)
                 elif type == PER_TYPE_SAT_DETECT_OPERATION_CNT:
@@ -648,10 +648,10 @@ class ASTRONODE:
                     (per_struct.cmd_demod_attempt_cnt,) = struct.unpack_from("L", data, i+2)
                 elif type == PER_TYPE_CMD_DEMOD_SUCCESS_CNT:
                     (per_struct.cmd_demod_success_cnt,) = struct.unpack_from("L", data, i+2)
-                    
+
                 i += (2 + length)
             status = ANS_STATUS_SUCCESS
-        
+
         return (status, per_struct)
 
     def save_context(self):
@@ -678,7 +678,7 @@ class ASTRONODE:
             while i < len(data):
                 type = data[i]
                 length = data[i+1]
-                
+
                 if type == MST_TYPE_MSG_IN_QUEUE:
                     (module_state.msg_in_queue,) = struct.unpack_from("B", data, i+2)
                 elif type == MST_TYPE_ACK_MSG_QUEUE:
@@ -689,7 +689,7 @@ class ASTRONODE:
                     (module_state.uptime ,) = struct.unpack_from("L", data, i+2)
                 i += (2 + length)
             status = ANS_STATUS_SUCCESS
-        
+
         return (status, module_state)
 
     def read_environment_details(self):
@@ -702,7 +702,7 @@ class ASTRONODE:
             while i < len(data):
                 type = data[i]
                 length = data[i+1]
-                
+
                 if type == END_TYPE_LAST_MAC_RESULT:
                     (env_details.last_mac_result,) = struct.unpack_from("B", data, i+2)
                 elif type == END_TYPE_LAST_SAT_SEARCH_PEAK_RSSI:
@@ -711,7 +711,7 @@ class ASTRONODE:
                     (env_details.time_since_last_sat_search,) = struct.unpack_from("L", data, i+2)
                 i += (2 + length)
             status = ANS_STATUS_SUCCESS
-        
+
         return (status, env_details)
 
     def read_last_contact_details(self):
@@ -724,7 +724,7 @@ class ASTRONODE:
             while i < len(data):
                 type = data[i]
                 length = data[i+1]
-                
+
                 if type == LCD_TYPE_TIME_START_LAST_CONTACT:
                     (lcd_details.time_start_last_contact,) = struct.unpack_from("L", data, i+2)
                 elif type == LCD_TYPE_TIME_END_LAST_CONTACT:
@@ -735,7 +735,7 @@ class ASTRONODE:
                     (lcd_details.time_peak_rssi_last_contact,) = struct.unpack_from("L", data, i+2)
                 i += (2 + length)
             status = ANS_STATUS_SUCCESS
-        
+
         return (status, lcd_details)
 
     def enqueue_payload(self, data, id=None):
@@ -779,7 +779,7 @@ class ASTRONODE:
         dl_data = self.ASTRONODE_DOWNLINK_COMMAND_STRUCT()
         (status, data) = self.send_cmd(CMD_RR, CMD_RA)
         if status == ANS_STATUS_DATA_RECEIVED:
-            (time_tmp,) = struct.unpack(">L", data)
+            (time_tmp,) = struct.unpack("<L", data)
             dl_data.create_date = time_tmp + ASTROCAST_REF_UNIX_TIME
 
             command_len = len(data) - 4
